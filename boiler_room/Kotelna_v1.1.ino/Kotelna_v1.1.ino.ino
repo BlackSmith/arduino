@@ -62,6 +62,7 @@
 OneWire oneWireDS(ONEW_PIN);
 DallasTemperature senzoryDS(&oneWireDS);
 
+IPAddress ip(IPADDRESS);
 
 // Callback function header
 void callback(char* topic, byte* payload, unsigned int length);
@@ -244,6 +245,44 @@ void callback(char* topic, byte* payload, unsigned int length)
 }
 
 
+void networkInit() {
+  // Start network
+  IPAddress gw(IPGW);
+  IPAddress dns(IPDNS);
+  IPAddress mask(IPMASK);
+  #ifdef DEBUG
+    Serial.println(ip);  
+  #endif
+  uint8_t mac[6] = {MACADDRESS};
+  Ethernet.begin(mac, ip, dns, gw, mask);
+
+
+  // Start MQTT
+  if (client.connect("arduinoClient")) {     
+      byte numDS = senzoryDS.getDeviceCount(); 
+      char a[16];            
+      sprintf(a, "sensors:%d/0", numDS); 
+      client.publish("out" MQTT_PLACE "/online", a);
+      client.subscribe("in" MQTT_PLACE "/#");
+  }
+  
+  reload_mqtt_int = millis();
+}
+
+
+void displayInit() {
+  // Display
+  oled.begin();  
+  oled.setFlipMode(0);  
+  oled.firstPage();
+  oled.setFont(u8g2_font_t0_12_tf);
+  char ipp[20];
+  sprintf(ipp, "%d.%d.%d.%d\0", ip[0],ip[1],ip[2],ip[3]);   
+  oled.drawStr(25, 10, ipp);      
+  oled.nextPage();
+  reload_display_int = millis();  
+}
+
 void setup() 
 {
   #ifdef DEBUG
@@ -263,40 +302,10 @@ void setup()
     pin += 2;
   }
     
-  // Start network
-  IPAddress ip(IPADDRESS);
-  IPAddress gw(IPGW);
-  IPAddress dns(IPDNS);
-  IPAddress mask(IPMASK);
-  #ifdef DEBUG
-    Serial.println(ip);  
-  #endif
-  uint8_t mac[6] = {MACADDRESS};
-  Ethernet.begin(mac, ip, dns, gw, mask);
- 
-  // Display
-  oled.begin();  
-  oled.setFlipMode(0);  
-  oled.firstPage();
-  oled.setFont(u8g2_font_t0_12_tf);
-  char ipp[20];
-  sprintf(ipp, "%d.%d.%d.%d\0", ip[0],ip[1],ip[2],ip[3]);   
-  oled.drawStr(25, 10, ipp);      
-  oled.nextPage();
-  reload_display_int = millis();  
- 
-  
-  // Start MQTT
-  if (client.connect("arduinoClient")) {     
-      byte numDS = senzoryDS.getDeviceCount(); 
-      char a[16];            
-      sprintf(a, "sensors:%d/0", numDS); 
-      client.publish("out" MQTT_PLACE "/online", a);
-      client.subscribe("in" MQTT_PLACE "/#");
-  }
-  
-  reload_mqtt_int = millis();
+  networkInit();
+  displayInit();
 }
+
 
 void loop() 
 {  
@@ -328,8 +337,10 @@ void loop()
     } 
     client.publish("out" MQTT_PLACE "/offline", "MQTT server is unavailable");
     #ifdef DEBUG        
-      Serial.println("MQTT server is unavailable");
-    #endif
+      Serial.println("MQTT server is unavailable. Restart.");
+    #endif    
     reload_mqtt_int = millis();
+    networkInit();
+    displayInit();
   }   
 }
